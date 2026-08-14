@@ -304,7 +304,14 @@ export class Nodepod {
     }
 
     const cwd = opts.workdir ?? "/";
-    const env = opts.env ?? {};
+    const env = { ...(opts.env ?? {}) };
+    // Package-manager commands run inside process workers and construct their
+    // own DependencyInstaller. Propagate the pod-level cache policy so `npm
+    // install` does not silently reopen IndexedDB after the SDK cache was
+    // explicitly disabled (or the memory package store was selected).
+    if (opts.enableSnapshotCache === false || opts.packageStore === "memory") {
+      env.NODEPOD_DISABLE_SNAPSHOT_CACHE = "1";
+    }
 
     const handler = new MemoryHandler(opts.memory);
     handler.startMonitoring();

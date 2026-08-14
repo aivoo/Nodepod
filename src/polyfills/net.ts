@@ -131,7 +131,7 @@ TcpSocket.prototype.connect = function connect(
     self.connecting = false;
     self.readyState = "open";
     self.emit("connect");
-    if (done) done();
+    if (done) done.call(self);
   });
 
   return this;
@@ -272,7 +272,7 @@ TcpServer.prototype.listen = function listen(
   const self = this;
   queueMicrotask(() => {
     self.emit("listening");
-    if (done) done();
+    if (done) done.call(self);
   });
 
   return this;

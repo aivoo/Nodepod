@@ -622,7 +622,7 @@ Server.prototype.listen = function listen(
         return;
       }
     }
-    if (origDone) origDone();
+    if (origDone) origDone.call(self);
   };
 
   this._tcp.listen(port, host, done);

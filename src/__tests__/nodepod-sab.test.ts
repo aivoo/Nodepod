@@ -69,6 +69,19 @@ describe("Nodepod SAB opt-out", () => {
     pod.teardown();
   });
 
+  it("propagates the disabled package snapshot policy to spawned commands", async () => {
+    const pod = await Nodepod.boot({
+      serviceWorker: false,
+      enableSnapshotCache: false,
+      env: { NODEPOD_USER_ENV: "kept" },
+    });
+    expect((pod as any)._env).toMatchObject({
+      NODEPOD_USER_ENV: "kept",
+      NODEPOD_DISABLE_SNAPSHOT_CACHE: "1",
+    });
+    pod.teardown();
+  });
+
   it("missing SAB runtime does not throw, boot degrades and warns", async () => {
     delete (globalThis as any).SharedArrayBuffer;
 

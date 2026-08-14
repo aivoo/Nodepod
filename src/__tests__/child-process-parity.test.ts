@@ -12,6 +12,7 @@ import {
   promises as cpPromises,
   initShellExec,
   getUnsupportedNativeExecutableMessage,
+  shouldUseShellSnapshotCache,
 } from "../polyfills/child_process";
 
 describe("installPackageNames", () => {
@@ -35,6 +36,14 @@ describe("installPackageNames", () => {
     expect(installPackageNames(["-D", "typescript", "--no-save"])).toEqual([
       "typescript",
     ]);
+  });
+});
+
+describe("shell package snapshot policy", () => {
+  it("honors the pod-level cache opt-out propagated to process workers", () => {
+    expect(shouldUseShellSnapshotCache()).toBe(true);
+    expect(shouldUseShellSnapshotCache({})).toBe(true);
+    expect(shouldUseShellSnapshotCache({ NODEPOD_DISABLE_SNAPSHOT_CACHE: "1" })).toBe(false);
   });
 });
 

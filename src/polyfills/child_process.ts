@@ -731,7 +731,13 @@ let _shellSnapshotCache:
   | null
   | undefined;
 
-async function getShellSnapshotCache() {
+/** @internal exported for regression tests. */
+export function shouldUseShellSnapshotCache(env?: Record<string, string>): boolean {
+  return env?.NODEPOD_DISABLE_SNAPSHOT_CACHE !== "1";
+}
+
+async function getShellSnapshotCache(env?: Record<string, string>) {
+  if (!shouldUseShellSnapshotCache(env)) return null;
   if (_shellSnapshotCache === undefined) {
     try {
       const { openSnapshotCache } = await import("../persistence/idb-cache");
@@ -817,7 +823,7 @@ async function installPackages(
   if (globalReject) return globalReject;
 
   const { DependencyInstaller } = await import("../packages/installer");
-  const snapshotCache = await getShellSnapshotCache();
+  const snapshotCache = await getShellSnapshotCache(ctx.env);
   const installer = new DependencyInstaller(_vol!, { cwd: ctx.cwd, snapshotCache });
   let out = "";
   const write = _stdoutSink ?? ((_s: string) => {});
@@ -1158,7 +1164,7 @@ async function npmCi(
   }
 
   const { DependencyInstaller } = await import("../packages/installer");
-  const snapshotCache = await getShellSnapshotCache();
+  const snapshotCache = await getShellSnapshotCache(ctx.env);
   const installer = new DependencyInstaller(_vol!, {
     cwd: ctx.cwd,
     snapshotCache,
