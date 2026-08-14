@@ -818,7 +818,7 @@ export function buildProcessEnv(config?: {
     // HandleType enum onto that split for introspection parity.
     _getActiveRequests(): unknown[] {
       const reqTypes = new Set<string>([
-        "FSReqCallback", "FetchRequest", "DynamicImport", "WASMWork",
+        "FSReqCallback", "FetchRequest", "DynamicImport", "PromiseTask", "WASMWork",
       ]);
       return getRegistry()
         .list()
@@ -827,7 +827,7 @@ export function buildProcessEnv(config?: {
     },
     _getActiveHandles(): unknown[] {
       const reqTypes = new Set<string>([
-        "FSReqCallback", "FetchRequest", "DynamicImport", "WASMWork",
+        "FSReqCallback", "FetchRequest", "DynamicImport", "PromiseTask", "WASMWork",
       ]);
       return getRegistry()
         .list()

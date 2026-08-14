@@ -44,6 +44,7 @@ export type HandleType =
   | "Interval"
   | "FetchRequest"
   | "DynamicImport"
+  | "PromiseTask"
   | "TCPSocketWrap"
   | "TCPServerWrap"
   | "UDPWrap"

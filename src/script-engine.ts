@@ -225,7 +225,10 @@ function pickModuleExportName(source: string): string {
   const base = "__nodepodModule";
   let candidate = base;
   let suffix = 0;
-  while (source.includes(candidate)) {
+  while (
+    source.includes(candidate) ||
+    source.includes(`${candidate}TrackDetached`)
+  ) {
     suffix++;
     candidate = `${base}_${suffix}`;
   }
@@ -311,6 +314,24 @@ function convertViaAst(
     if (node.type === "ImportExpression") {
       patches.push([node.start, node.start + 6, "__asyncLoad"]);
     }
+    // ESM CLIs commonly dispatch an async action without returning its
+    // Promise (CAC/Vite's `this.runMatchedCommand();` is one example). Native
+    // Node stays alive because the action's I/O owns libuv requests; browser
+    // implementations can otherwise have no visible handle between awaits.
+    // Track only call results that the program explicitly discards.
+    if (
+      node.type === "ExpressionStatement" &&
+      node.expression?.type === "CallExpression" &&
+      node.expression.callee?.type !== "Super"
+    ) {
+      const trackerName = `${moduleExportName}TrackDetached`;
+      patches.push([
+        node.expression.start,
+        node.expression.start,
+        `${trackerName}(`,
+      ]);
+      patches.push([node.expression.end, node.expression.end, ")"]);
+    }
   });
 
   const hasImportDecl = ast.body.some(
@@ -376,6 +397,9 @@ function buildModuleWrapper(
 
   const promiseVar = useNativePromise ? "globalThis.Promise" : "$SyncPromise";
   const fnKeyword = isAsync ? "async function" : "function";
+  const detachedTrackerName = moduleExportName
+    ? `${moduleExportName}TrackDetached`
+    : "__nodepodTrackDetached";
 
   // strip sentinel, emit __esModule in outer scope below
   const isEsmModule = code.startsWith(ESM_SENTINEL);
@@ -386,6 +410,7 @@ var require = $require;
 var module = $module;
 ${moduleExportName ? `var ${moduleExportName} = $module;\n` : ""}var __filename = $filename;
 var __dirname = $dirname;
+var ${detachedTrackerName} = $trackDetached;
 `;
   if (includeViteVars) {
     vars += `var __vite_injected_original_filename = $filename;
@@ -432,7 +457,7 @@ async function __wasmInstantiate(moduleOrBytes, imports) {
 `;
   }
 
-  return `(function($exports, $require, $module, $filename, $dirname, $process, $console, $importMeta, $asyncLoad, $syncAwait, $SyncPromise) {
+  return `(function($exports, $require, $module, $filename, $dirname, $process, $console, $importMeta, $asyncLoad, $syncAwait, $SyncPromise, $trackDetached) {
 ${vars}return (${fnKeyword}() {
 ${code}
 }).call(this);
@@ -634,6 +659,34 @@ function syncAwait(val: unknown): unknown {
     if (gotSync) return resolved;
   }
   return val;
+}
+
+function trackDetachedPromise<T>(value: T): T {
+  if (
+    value == null ||
+    (typeof value !== "object" && typeof value !== "function") ||
+    typeof (value as any).then !== "function"
+  ) {
+    return value;
+  }
+
+  const handle = getRegistry().register("PromiseTask");
+  const close = () => handle.close();
+  try {
+    // Keep the rejection on the detached child chain so the existing
+    // unhandled-rejection path still reports failed CLI actions.
+    if (typeof (value as any).finally === "function") {
+      (value as any).finally(close);
+    } else {
+      (value as any).then(close, (error: unknown) => {
+        close();
+        throw error;
+      });
+    }
+  } catch {
+    close();
+  }
+  return value;
 }
 
 // Promise subclass that resolves .then() synchronously when the executor resolves sync.
@@ -1906,6 +1959,7 @@ function buildResolver(
         asyncLoader,
         syncAwait,
         SyncPromiseClass,
+        trackDetachedPromise,
       );
 
       record.loaded = true;
@@ -1956,6 +2010,7 @@ function buildResolver(
             asyncLoader,
             syncAwait,
             SyncPromiseClass,
+            trackDetachedPromise,
           );
           record.loaded = true;
           patchFetchNodeAdapterExports(
@@ -2995,6 +3050,7 @@ export class ScriptEngine {
         asyncLoader,
         syncAwait,
         SyncPromiseClass,
+        trackDetachedPromise,
       );
 
       mod.loaded = true;
@@ -3117,6 +3173,7 @@ export class ScriptEngine {
           asyncLoader,
           syncAwait,
           SyncPromiseClass,
+          trackDetachedPromise,
         );
         mod.loaded = true;
       } catch (err) {
@@ -3145,6 +3202,7 @@ export class ScriptEngine {
         asyncLoader,
         syncAwait,
         SyncPromiseClass,
+        trackDetachedPromise,
       );
       mod.loaded = true;
     } catch (err) {

@@ -326,6 +326,42 @@ describe("exit semantics - libuv-parity", () => {
     }, 5_000);
   });
 
+  describe("ESM CLI detached async actions", () => {
+    it("keeps a discarded command action promise alive until it settles", async () => {
+      const { ctx } = setup({
+        "/cli.mjs": `
+          import fs from "node:fs";
+
+          async function buildAction() {
+            await new globalThis.Promise((resolve) => globalThis.setTimeout(resolve, 40));
+            fs.writeFileSync("/dist-ready.txt", "ready");
+            console.log("build-finished");
+          }
+
+          class CLI {
+            runMatchedCommand() {
+              return buildAction();
+            }
+            parse() {
+              this.runMatchedCommand();
+              console.log("resources=" + process.getActiveResourcesInfo().join(","));
+              return { args: [], options: {} };
+            }
+          }
+
+          new CLI().parse();
+          export {};
+        `,
+      });
+
+      const result = await executeNodeBinary("/cli.mjs", [], ctx);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("PromiseTask");
+      expect(result.stdout).toContain("build-finished");
+      expect(ctx.volume.readFileSync("/dist-ready.txt", "utf8")).toBe("ready");
+    });
+  });
+
   describe("node-parity correctness fixes", () => {
     it("process.exitCode is honored on natural drain", async () => {
       const { ctx } = setup({
