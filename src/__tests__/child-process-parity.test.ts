@@ -47,6 +47,45 @@ describe("shell package snapshot policy", () => {
   });
 });
 
+describe("npm lifecycle environment", () => {
+  const runBuildProbe = async (env?: Record<string, string>) => {
+    const volume = new MemoryVolume();
+    volume.writeFileSync(
+      "/package.json",
+      JSON.stringify({
+        name: "node-env-probe",
+        version: "1.0.0",
+        scripts: {
+          build: "node build.js",
+        },
+      }),
+    );
+    volume.writeFileSync(
+      "/build.js",
+      "if (process.env.NODE_ENV === undefined) process.env.NODE_ENV = 'production';\nconsole.log(process.env.NODE_ENV);\n",
+    );
+    initShellExec(volume, { cwd: "/", env });
+
+    return new Promise<{ error: Error | null; stdout: string; stderr: string }>((resolve) => {
+      shellExec("npm run build", {}, (error, stdout, stderr) => {
+        resolve({ error, stdout, stderr });
+      });
+    });
+  };
+
+  it("leaves NODE_ENV unset so production build tools can choose their default", async () => {
+    const result = await runBuildProbe();
+    expect(result.error, result.stderr).toBeNull();
+    expect(result.stdout.trim()).toBe("production");
+  });
+
+  it("preserves an explicitly supplied NODE_ENV through npm run", async () => {
+    const result = await runBuildProbe({ NODE_ENV: "test" });
+    expect(result.error, result.stderr).toBeNull();
+    expect(result.stdout.trim()).toBe("test");
+  });
+});
+
 describe("shellQuote / shellCommandFromArgv", () => {
   it("quotes args with spaces and metacharacters", () => {
     expect(shellQuote("hello world")).toBe("'hello world'");

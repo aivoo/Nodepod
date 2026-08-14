@@ -158,7 +158,6 @@ export const MOCK_PROCESS = {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_ENV = {
-  NODE_ENV: "development",
   PATH: "/usr/local/bin:/usr/bin:/bin",
   HOME: MOCK_OS.HOMEDIR,
   SHELL: "/bin/sh",

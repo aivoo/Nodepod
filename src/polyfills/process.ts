@@ -572,7 +572,6 @@ export function buildProcessEnv(config?: {
   const bus = new EventEmitter();
 
   const envVars: ProcessEnvVars = {
-    NODE_ENV: DEFAULT_ENV.NODE_ENV,
     PATH: DEFAULT_ENV.PATH,
     HOME: DEFAULT_ENV.HOME,
     SHELL: DEFAULT_ENV.SHELL,

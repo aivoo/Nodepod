@@ -337,7 +337,6 @@ export function initShellExec(volume: MemoryVolume, opts?: { cwd?: string; env?:
       HOME: "/home/user",
       USER: "user",
       PATH: "/usr/local/bin:/usr/bin:/bin:/node_modules/.bin",
-      NODE_ENV: "development",
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
       npm_config_user_agent: DEFAULT_ENV.npm_config_user_agent,

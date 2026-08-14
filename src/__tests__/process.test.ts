@@ -49,6 +49,11 @@ describe("process polyfill", () => {
       expect(proc.env.HOME).toBeDefined();
     });
 
+    it("matches Node by leaving NODE_ENV unset unless the caller provides it", () => {
+      expect(buildProcessEnv().env.NODE_ENV).toBeUndefined();
+      expect(buildProcessEnv({ env: { NODE_ENV: "production" } }).env.NODE_ENV).toBe("production");
+    });
+
     it("includes custom env vars passed in config", () => {
       const proc = buildProcessEnv({ env: { MY_VAR: "hello" } });
       expect(proc.env.MY_VAR).toBe("hello");
