@@ -40,6 +40,8 @@ const RE_AS_SPLIT = /\s+as\s+/;
 export interface ESMToCJSOptions {
   /** Target used for pure default exports. */
   exportTarget?: string;
+  /** Target used for named exports and mixed-export defaults. */
+  namedExportTarget?: string;
 }
 
 export function esmToCjs(
@@ -72,6 +74,7 @@ export function collectEsmCjsPatches(
   );
   const mixedExports = hasDefaultExport && hasNamedExport;
   const defaultExportTarget = options.exportTarget ?? "module.exports";
+  const namedExportTarget = options.namedExportTarget ?? "exports";
   // collected during the walk, prepended at the bottom of this fn
   const hoistedFunctionExports: string[] = [];
 
@@ -141,7 +144,7 @@ export function collectEsmCjsPatches(
     } else if (node.type === "ExportDefaultDeclaration") {
       const decl = node.declaration;
       const exportTarget = mixedExports
-        ? "exports.default"
+        ? `${namedExportTarget}.default`
         : defaultExportTarget;
 
       if (
@@ -179,7 +182,7 @@ export function collectEsmCjsPatches(
           patches.push([
             node.end,
             node.end,
-            `;\nexports.${name} = ${name};`,
+            `;\n${namedExportTarget}.${name} = ${name};`,
           ]);
         } else if (decl.type === "VariableDeclaration") {
           const needsLiveBinding = decl.kind === "let" || decl.kind === "var";
@@ -196,10 +199,10 @@ export function collectEsmCjsPatches(
               for (const name of extractBindingNames(d.id)) {
                 if (needsLiveBinding) {
                   bindings.push(
-                    `Object.defineProperty(exports, ${JSON.stringify(name)}, { get() { return ${name}; }, enumerable: true })`,
+                    `Object.defineProperty(${namedExportTarget}, ${JSON.stringify(name)}, { get() { return ${name}; }, enumerable: true })`,
                   );
                 } else {
-                  bindings.push(`exports.${name} = ${name}`);
+                  bindings.push(`${namedExportTarget}.${name} = ${name}`);
                 }
               }
             }
@@ -207,10 +210,10 @@ export function collectEsmCjsPatches(
             for (const d of decl.declarations) {
               if (needsLiveBinding) {
                 bindings.push(
-                  `Object.defineProperty(exports, ${JSON.stringify(d.id.name)}, { get() { return ${d.id.name}; }, enumerable: true })`,
+                  `Object.defineProperty(${namedExportTarget}, ${JSON.stringify(d.id.name)}, { get() { return ${d.id.name}; }, enumerable: true })`,
                 );
               } else {
-                bindings.push(`exports.${d.id.name} = ${d.id.name}`);
+                bindings.push(`${namedExportTarget}.${d.id.name} = ${d.id.name}`);
               }
             }
           }
@@ -227,18 +230,19 @@ export function collectEsmCjsPatches(
         for (const spec of node.specifiers) {
           if (spec.local.name === "default") {
             lines.push(
-              `exports.${spec.exported.name} = ${tmp}.__esModule ? ${tmp}.default : ${tmp}`,
+              `${namedExportTarget}.${spec.exported.name} = ${tmp}.__esModule ? ${tmp}.default : ${tmp}`,
             );
           } else {
             lines.push(
-              `exports.${spec.exported.name} = ${tmp}.${spec.local.name}`,
+              `${namedExportTarget}.${spec.exported.name} = ${tmp}.${spec.local.name}`,
             );
           }
         }
         patches.push([node.start, node.end, lines.join(";\n") + ";"]);
       } else {
         const lines = node.specifiers.map(
-          (s: any) => `exports.${s.exported.name} = ${s.local.name}`,
+          (s: any) =>
+            `${namedExportTarget}.${s.exported.name} = ${s.local.name}`,
         );
         patches.push([node.start, node.end, lines.join(";\n") + ";"]);
       }
@@ -249,13 +253,13 @@ export function collectEsmCjsPatches(
         patches.push([
           node.start,
           node.end,
-          `exports[${JSON.stringify(name)}] = require(${JSON.stringify(src)})`,
+          `${namedExportTarget}[${JSON.stringify(name)}] = require(${JSON.stringify(src)})`,
         ]);
       } else {
         patches.push([
           node.start,
           node.end,
-          `Object.assign(exports, require(${JSON.stringify(src)}))`,
+          `Object.assign(${namedExportTarget}, require(${JSON.stringify(src)}))`,
         ]);
       }
     }
@@ -267,7 +271,7 @@ export function collectEsmCjsPatches(
   if (hoistedFunctionExports.length > 0) {
     const prefix =
       hoistedFunctionExports
-        .map((n) => `exports.${n} = ${n};`)
+        .map((n) => `${namedExportTarget}.${n} = ${n};`)
         .join("\n") + "\n";
     patches.push([0, 0, prefix]);
   }

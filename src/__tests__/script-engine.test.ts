@@ -263,6 +263,44 @@ describe("ScriptEngine", () => {
       expect(result.exports).toEqual(["function", 42]);
     });
 
+    it("exposes named ESM exports through an awaited dynamic import", () => {
+      const { engine } = createEngine({
+        "/project/chunk.mjs": [
+          "export function createBuilder() { return 'builder'; }",
+          "export const version = 6;",
+        ].join("\n"),
+        "/project/entry.mjs": [
+          "const { createBuilder, version } = await import('./chunk.mjs');",
+          "export const shape = [typeof createBuilder, createBuilder(), version];",
+        ].join("\n"),
+      });
+      const result = engine.execute(
+        'module.exports = require("./entry.mjs").shape;',
+        "/project/index.js",
+      );
+      expect(result.exports).toEqual(["function", "builder", 6]);
+    });
+
+    it("keeps aliased ESM exports when a bundle shadows exports", () => {
+      const { engine } = createEngine({
+        "/project/chunk.mjs": [
+          "function createBuilder() { return 'builder'; }",
+          "var buildNamespace = { createBuilder };",
+          "var exports = { packageJsonField: true };",
+          "export { buildNamespace as T, createBuilder as g };",
+        ].join("\n"),
+        "/project/entry.mjs": [
+          "const { createBuilder } = await import('./chunk.mjs').then((namespace) => namespace.T);",
+          "export const result = createBuilder();",
+        ].join("\n"),
+      });
+      const result = engine.execute(
+        'module.exports = require("./entry.mjs").result;',
+        "/project/index.js",
+      );
+      expect(result.exports).toBe("builder");
+    });
+
     it("recognizes native promises returned by async module callbacks", () => {
       const { engine } = createEngine({
         "/project/entry.js": [

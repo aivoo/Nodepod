@@ -322,6 +322,7 @@ function convertViaAst(
   if (hasImportDecl || hasExportDecl) {
     collectEsmCjsPatches(ast, source, patches, {
       exportTarget: `${moduleExportName}.exports`,
+      namedExportTarget: `${moduleExportName}.exports`,
     });
   }
 
@@ -580,6 +581,7 @@ function convertViaRegex(
   if (hasImport || hasExport) {
     output = esmToCjs(output, {
       exportTarget: `${moduleExportName}.exports`,
+      namedExportTarget: `${moduleExportName}.exports`,
     });
     if (hasExport) {
       // see ESM_SENTINEL above. #56
