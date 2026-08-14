@@ -18,7 +18,27 @@ export const CDN_LIGHTNINGCSS_WASM = `https://esm.sh/lightningcss-wasm@${PINNED_
 export const CDN_WA_SQLITE = `https://cdn.jsdelivr.net/npm/wa-sqlite@${PINNED_WA_SQLITE}/dist/wa-sqlite.mjs`;
 export const CDN_WA_SQLITE_WASM = `https://cdn.jsdelivr.net/npm/wa-sqlite@${PINNED_WA_SQLITE}/dist/wa-sqlite.wasm`;
 
+import { getRegistry } from "../helpers/event-loop";
+
 // new Function hides import() from bundler static analysis so CDN URLs work at runtime
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const _dynamicImport = new Function("url", "return import(url)") as (url: string) => Promise<any>;
-export { _dynamicImport as cdnImport };
+
+export function withDynamicImportHandle<T>(load: () => Promise<T>): Promise<T> {
+  // Native browser import() performs network and module-evaluation work outside
+  // Nodepod's virtual libuv primitives. Keep the virtual process alive until
+  // that work settles, just as Node keeps a module loader request alive.
+  const handle = getRegistry().register("DynamicImport");
+  let pending: Promise<T>;
+  try {
+    pending = load();
+  } catch (error) {
+    handle.close();
+    throw error;
+  }
+  return pending.finally(() => handle.close());
+}
+
+export function cdnImport(url: string): Promise<any> {
+  return withDynamicImportHandle(() => _dynamicImport(url));
+}
