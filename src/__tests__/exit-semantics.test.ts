@@ -360,6 +360,41 @@ describe("exit semantics - libuv-parity", () => {
       expect(result.stdout).toContain("build-finished");
       expect(ctx.volume.readFileSync("/dist-ready.txt", "utf8")).toBe("ready");
     });
+
+    it("does not inject detached-task bindings into serialized functions", async () => {
+      const { ctx } = setup({
+        "/serialize.mjs": `
+          import fs from "node:fs";
+
+          function modulePreloadPolyfill() {
+            processPreload();
+            new MutationObserver(() => {}).observe(document, { childList: true });
+          }
+
+          const preload = () => {
+            loadAsset();
+          };
+
+          fs.writeFileSync(
+            "/serialized-functions.txt",
+            modulePreloadPolyfill.toString() + "\\n---\\n" + preload.toString(),
+          );
+          export {};
+        `,
+      });
+
+      const result = await executeNodeBinary("/serialize.mjs", [], ctx);
+      const serialized = ctx.volume.readFileSync(
+        "/serialized-functions.txt",
+        "utf8",
+      ) as string;
+
+      expect(result.exitCode).toBe(0);
+      expect(serialized).toContain("processPreload();");
+      expect(serialized).toContain("loadAsset();");
+      expect(serialized).not.toContain("__nodepodModuleTrackDetached");
+      expect(serialized).not.toContain("__nodepodTrackDetached");
+    });
   });
 
   describe("node-parity correctness fixes", () => {

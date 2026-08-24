@@ -269,6 +269,89 @@ function astHasTopLevelAwait(ast: any): boolean {
   return found;
 }
 
+interface SourceRange {
+  start: number;
+  end: number;
+}
+
+function isFunctionNode(node: any): boolean {
+  return node?.type === "FunctionDeclaration" ||
+    node?.type === "FunctionExpression" ||
+    node?.type === "ArrowFunctionExpression";
+}
+
+function memberPropertyName(node: any): string | null {
+  if (node?.type !== "MemberExpression") return null;
+  if (!node.computed && node.property?.type === "Identifier") {
+    return node.property.name;
+  }
+  if (
+    node.computed &&
+    node.property?.type === "Literal" &&
+    typeof node.property.value === "string"
+  ) {
+    return node.property.value;
+  }
+  return null;
+}
+
+/**
+ * Build tools such as Vite serialize helper functions into generated browser
+ * assets with `helper.toString()`. Instrumenting discarded calls inside those
+ * functions leaks Nodepod-only bindings into the emitted source. Keep the CLI
+ * liveness transform everywhere else, but keep directly serialized functions
+ * free of runtime-only detached-task wrappers.
+ */
+function findSerializedFunctionRanges(ast: any): SourceRange[] {
+  const bindings = new Map<string, SourceRange[]>();
+  const serializedNames = new Set<string>();
+  const directRanges: SourceRange[] = [];
+
+  const addBinding = (name: string, node: any): void => {
+    if (!isFunctionNode(node)) return;
+    const ranges = bindings.get(name) ?? [];
+    ranges.push({ start: node.start, end: node.end });
+    bindings.set(name, ranges);
+  };
+
+  traverseAst(ast, (node: any) => {
+    if (node.type === "FunctionDeclaration" && node.id?.type === "Identifier") {
+      addBinding(node.id.name, node);
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id?.type === "Identifier" &&
+      isFunctionNode(node.init)
+    ) {
+      addBinding(node.id.name, node.init);
+      return;
+    }
+    if (
+      node.type !== "CallExpression" ||
+      memberPropertyName(node.callee) !== "toString" ||
+      node.arguments?.length !== 0
+    ) {
+      return;
+    }
+    const target = node.callee.object;
+    if (target?.type === "Identifier") {
+      serializedNames.add(target.name);
+    } else if (isFunctionNode(target)) {
+      directRanges.push({ start: target.start, end: target.end });
+    }
+  });
+
+  for (const name of serializedNames) {
+    directRanges.push(...(bindings.get(name) ?? []));
+  }
+  return directRanges;
+}
+
+function isInsideSourceRanges(node: any, ranges: SourceRange[]): boolean {
+  return ranges.some((range) => range.start <= node.start && node.end <= range.end);
+}
+
 function convertModuleSyntaxDetailed(
   source: string,
   filePath: string,
@@ -301,6 +384,7 @@ function convertViaAst(
     sourceType: "module",
   }) as any;
   const patches: Array<[number, number, string]> = [];
+  const serializedFunctionRanges = findSerializedFunctionRanges(ast);
 
   // collect import.meta and import() patches
   traverseAst(ast, (node: any) => {
@@ -322,7 +406,8 @@ function convertViaAst(
     if (
       node.type === "ExpressionStatement" &&
       node.expression?.type === "CallExpression" &&
-      node.expression.callee?.type !== "Super"
+      node.expression.callee?.type !== "Super" &&
+      !isInsideSourceRanges(node, serializedFunctionRanges)
     ) {
       const trackerName = `${moduleExportName}TrackDetached`;
       patches.push([
