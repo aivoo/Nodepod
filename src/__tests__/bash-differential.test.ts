@@ -31,6 +31,13 @@ async function runNodepod(script: string): Promise<{ stdout: string; stderr: str
   return shell.exec(script);
 }
 
+function normalizePlatformUtilityFormatting(script: string, output: string): string {
+  // BSD and GNU uniq use different padding widths for `uniq -c`. The count
+  // and value are the compatibility contract; host-specific left padding is not.
+  if (script.includes("uniq -c")) return output.replace(/^\s+(?=\d+\s)/gm, "");
+  return output;
+}
+
 describe.skipIf(!bashAvailable)("Nodepod shell differential corpus", () => {
   for (const script of [
     "printf '%s\\n' hello world",
@@ -40,7 +47,9 @@ describe.skipIf(!bashAvailable)("Nodepod shell differential corpus", () => {
   ]) {
     it(`matches Bash for ${script}`, async () => {
       const [bash, nodepod] = await Promise.all([Promise.resolve(runBash(script)), runNodepod(script)]);
-      expect(nodepod.stdout).toBe(bash.stdout);
+      expect(normalizePlatformUtilityFormatting(script, nodepod.stdout)).toBe(
+        normalizePlatformUtilityFormatting(script, bash.stdout),
+      );
       expect(nodepod.exitCode).toBe(bash.exitCode);
     });
   }
