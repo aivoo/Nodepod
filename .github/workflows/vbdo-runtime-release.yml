@@ -1,0 +1,76 @@
+name: vbdo Runtime Release
+
+on:
+  push:
+    tags:
+      - "vbdo-nodepod-*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'aivoo/Nodepod'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Fetch official upstream base
+        run: |
+          git remote add upstream https://github.com/R1ck404/Nodepod.git
+          git fetch --no-tags upstream main
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @scelar/nodepod...
+
+      - name: Type check
+        run: pnpm run type-check
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build publishable package
+        run: pnpm run build:publish
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser preview regression
+        run: pnpm run test:browser:preview
+
+      - name: Package and generate provenance manifest
+        id: package
+        run: node scripts/package-vbdo-runtime.mjs
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodepod-runtime-${{ steps.package.outputs.runtime_revision }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "release/${{ steps.package.outputs.artifact }}" \
+            release/nodepod-runtime.json \
+            release/LICENSE \
+            --target "$GITHUB_SHA" \
+            --title "vbdo Nodepod ${{ steps.package.outputs.runtime_revision }}" \
+            --generate-notes \
+            --verify-tag
